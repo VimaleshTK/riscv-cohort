@@ -23,7 +23,7 @@ git config -global user.name "VimaleshTK"
 git config -global user.email "vimaleshtk1@gmail.com"
 git clone https://github.com/riscv/riscv-opcodes
 git add .
-git commit -m "upload files"
+git commit -m "upload"
 git push 
 
 
