@@ -1,7 +1,7 @@
 # Print-Opcodes
 
 
-Linux Commands Tried: 
+## Linux Commands Tried: 
 
 `mkdir riscv-opcodes-assignment`
 `cd riscv-opcodes-assignment`
@@ -17,7 +17,7 @@ Linux Commands Tried:
 `cp "all_opcodes.txt" ../../print-opcodes`
 `cd ../../print-opcodes`
 
-Git Commands Tried: 
+## Git Commands Tried: 
 
 `git config -global user.name "VimaleshTK"`
 `git config -global user.email "vimaleshtk1@gmail.com"`
