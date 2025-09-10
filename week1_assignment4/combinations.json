@@ -1,0 +1,300 @@
+{
+    "RV64_C": [
+        {
+            "opcode": 0,
+            "funct3": null,
+            "funct7": null
+        }
+    ],
+    "RV64_I": [
+        {
+            "opcode": 4,
+            "funct3": 1,
+            "funct7": 0
+        },
+        {
+            "opcode": 4,
+            "funct3": 5,
+            "funct7": 0
+        },
+        {
+            "opcode": 4,
+            "funct3": 5,
+            "funct7": 32
+        },
+        {
+            "opcode": 6,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 8,
+            "funct3": 3,
+            "funct7": null
+        }
+    ],
+    "RV64_ZBA": [
+        {
+            "opcode": 14,
+            "funct3": 0,
+            "funct7": 4
+        }
+    ],
+    "RV64_ZBB": [
+        {
+            "opcode": 4,
+            "funct3": 5,
+            "funct7": 48
+        }
+    ],
+    "RV64_ZBKB": [
+        {
+            "opcode": 14,
+            "funct3": 4,
+            "funct7": 4
+        }
+    ],
+    "RV64_ZBP": [
+        {
+            "opcode": 4,
+            "funct3": 1,
+            "funct7": 4
+        },
+        {
+            "opcode": 4,
+            "funct3": 5,
+            "funct7": null
+        },
+        {
+            "opcode": 4,
+            "funct3": 5,
+            "funct7": 4
+        }
+    ],
+    "RV64_ZBS": [
+        {
+            "opcode": 4,
+            "funct3": 1,
+            "funct7": 20
+        },
+        {
+            "opcode": 4,
+            "funct3": 1,
+            "funct7": 36
+        },
+        {
+            "opcode": 4,
+            "funct3": 1,
+            "funct7": 52
+        },
+        {
+            "opcode": 4,
+            "funct3": 5,
+            "funct7": 36
+        }
+    ],
+    "RV_D": [
+        {
+            "opcode": 20,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 1,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 2,
+            "funct7": null
+        }
+    ],
+    "RV_F": [
+        {
+            "opcode": 20,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 1,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 2,
+            "funct7": null
+        }
+    ],
+    "RV_I": [
+        {
+            "opcode": 3,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 4,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 4,
+            "funct3": 3,
+            "funct7": null
+        },
+        {
+            "opcode": 4,
+            "funct3": 6,
+            "funct7": null
+        },
+        {
+            "opcode": 4,
+            "funct3": 7,
+            "funct7": null
+        },
+        {
+            "opcode": 5,
+            "funct3": null,
+            "funct7": null
+        },
+        {
+            "opcode": 12,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 12,
+            "funct3": 0,
+            "funct7": 32
+        },
+        {
+            "opcode": 12,
+            "funct3": 2,
+            "funct7": 0
+        },
+        {
+            "opcode": 12,
+            "funct3": 3,
+            "funct7": 0
+        },
+        {
+            "opcode": 24,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 24,
+            "funct3": 1,
+            "funct7": null
+        },
+        {
+            "opcode": 24,
+            "funct3": 4,
+            "funct7": null
+        },
+        {
+            "opcode": 24,
+            "funct3": 5,
+            "funct7": null
+        },
+        {
+            "opcode": 24,
+            "funct3": 6,
+            "funct7": null
+        },
+        {
+            "opcode": 24,
+            "funct3": 7,
+            "funct7": null
+        },
+        {
+            "opcode": 25,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 27,
+            "funct3": null,
+            "funct7": null
+        },
+        {
+            "opcode": 28,
+            "funct3": 0,
+            "funct7": null
+        }
+    ],
+    "RV_Q": [
+        {
+            "opcode": 20,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 1,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 2,
+            "funct7": null
+        }
+    ],
+    "RV_ZFH": [
+        {
+            "opcode": 20,
+            "funct3": 0,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 1,
+            "funct7": null
+        },
+        {
+            "opcode": 20,
+            "funct3": 2,
+            "funct7": null
+        }
+    ],
+    "RV_ZICSR": [
+        {
+            "opcode": 28,
+            "funct3": 1,
+            "funct7": null
+        },
+        {
+            "opcode": 28,
+            "funct3": 2,
+            "funct7": null
+        },
+        {
+            "opcode": 28,
+            "funct3": 3,
+            "funct7": null
+        },
+        {
+            "opcode": 28,
+            "funct3": 5,
+            "funct7": null
+        },
+        {
+            "opcode": 28,
+            "funct3": 6,
+            "funct7": null
+        },
+        {
+            "opcode": 28,
+            "funct3": 7,
+            "funct7": null
+        }
+    ],
+    "RV_ZIMOP": [
+        {
+            "opcode": 28,
+            "funct3": 4,
+            "funct7": null
+        }
+    ]
+}
