@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1758876280" />
+    <testcase name="alu_basic_test" classname="test_alu" file="/home/vsysuser/workspace/riscv-cohort/cocotb/test/test_alu.py" lineno="4" time="0.0037331581115722656" sim_time_ns="2.0" ratio_time="535.7394303231575" />
+  </testsuite>
+</testsuites>
