@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1759117645" />
+    <testcase name="multiplier_test" classname="test_multiplier" file="/home/vsysuser/workspace/riscv-cohort/cocotb/mul/test/test_multiplier.py" lineno="5" time="0.011438369750976562" sim_time_ns="26.0" ratio_time="2273.051192262798" />
+  </testsuite>
+</testsuites>
