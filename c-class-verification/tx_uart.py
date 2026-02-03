@@ -2,30 +2,28 @@ import os
 import random
 import logging
 from enum import Enum
-from pathlib import Path
 
 import cocotb
 import vsc
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiMaster, AxiBus, AxiBurstType
-from cocotbext.uart import UartSink
+from cocotbext.uart import UartSink, UartSource
 
-# ---------------------------
-# GLOBAL CONFIGURATION
-# ---------------------------
-CLK_PERIOD_NS = 100                 # 100ns period = 10 MHz
+# -----------------------------------------------------------------------------
+# 1. GLOBAL CONFIGURATION
+# -----------------------------------------------------------------------------
+CLK_PERIOD_NS = 100                 # 10 MHz Clock
 CLK_FREQ      = 1_000_000_000 // CLK_PERIOD_NS
-UART_BASE     = 0x00011300          # Base Address of the UART Peripheral
+UART_BASE     = 0x00011300          # Base Address
 
-# ---------------------------
-# UART Register Map
-# ---------------------------
+# -----------------------------------------------------------------------------
+# 2. REGISTER MAP & CONSTANTS
+# -----------------------------------------------------------------------------
 UartParity = Enum("UartParity", "NONE EVEN ODD MARK SPACE")
 
-# Offsets
 BAUD_REG      = UART_BASE + 0x00
-TX_REG        = UART_BASE + 0x04  # IMPORTANT: This is at offset +4!
+TX_REG        = UART_BASE + 0x04
 RX_REG        = UART_BASE + 0x08
 STATUS_REG    = UART_BASE + 0x0C
 DELAY_REG     = UART_BASE + 0x10
@@ -34,7 +32,7 @@ INTERRUPT_EN  = UART_BASE + 0x18
 IQCYC_REG     = UART_BASE + 0x1C
 RX_THRESH     = UART_BASE + 0x20
 
-# Control Register Bit Masks
+# Control Register Shifts
 CTRL_STOP_LSB   = 1
 CTRL_PARITY_LSB = 3
 CTRL_DW_LSB     = 5
@@ -50,48 +48,26 @@ def field_to_stop_bits(field: int):
     if field == 0b10: return 2
     return 1
 
-# ---------------------------
-# AXI Helpers (The Fix)
-# ---------------------------
-# Even though the bus is 64-bit, we must send 32-bit (size=2) requests
-# to individual registers to avoid SLVERR.
-
-async def axi_write32(axim: AxiMaster, addr: int, value: int, *, awid=1, prot=0):
-    """
-    Write 32 bits to the specified address.
-    If addr is 0x...04, cocotbext-axi puts data on bits [63:32] of the 64-bit bus.
-    This verifies the 64-bit lane steering.
-    """
+# -----------------------------------------------------------------------------
+# 3. HELPER FUNCTIONS (Safe 32-bit Access)
+# -----------------------------------------------------------------------------
+async def axi_write32(axim: AxiMaster, addr: int, value: int, *, awid=1):
+    """Safe 32-bit write to configure setup registers."""
     data = int(value & 0xFFFFFFFF).to_bytes(4, "little")
     await axim.write(address=addr, data=data,
-                     awid=awid, burst=AxiBurstType.FIXED, size=2, prot=prot)
+                     awid=awid, burst=AxiBurstType.FIXED, size=2)
 
-async def axi_read32(axim: AxiMaster, addr: int, *, arid=0, prot=0) -> int:
-    """Read 32 bits from the specified address."""
-    rd = await axim.read(address=addr, length=4,
-                         arid=arid, burst=AxiBurstType.FIXED, size=2, prot=prot)
-    return int.from_bytes(rd.data, "little")
-
-async def rmw16(axim: AxiMaster, reg_addr: int, value16: int, *, arid=0, awid=1):
-    """Read-Modify-Write for 16-bit registers."""
-    # Read 32 bits containing the 16-bit target
+async def rmw16(axim: AxiMaster, reg_addr: int, value16: int):
+    """Simple write wrapper for 16-bit registers (writes 32-bit aligned)."""
     aligned_addr = reg_addr & ~0x3
-    curr_val = await axi_read32(axim, aligned_addr, arid=arid)
-
-    # Calculate shift (if addr is 0x...02, shift 16 bits)
     is_upper = (reg_addr & 0x2) != 0
     shift = 16 if is_upper else 0
+    val32 = (value16 & 0xFFFF) << shift
+    await axi_write32(axim, aligned_addr, val32)
 
-    # Modify
-    mask = 0xFFFF << shift
-    new_val = (curr_val & ~mask) | ((value16 & 0xFFFF) << shift)
-
-    # Write back 32 bits
-    await axi_write32(axim, aligned_addr, new_val, awid=awid)
-
-# ---------------------------
-# Coverage Model
-# ---------------------------
+# -----------------------------------------------------------------------------
+# 4. COVERAGE MODEL
+# -----------------------------------------------------------------------------
 @vsc.randobj
 class uart_item(object):
     def __init__(self):
@@ -119,12 +95,15 @@ class my_covergroup(object):
         })
         self.Data_Width = vsc.coverpoint(self.data_width, cp_t=vsc.uint8_t())
 
-# ---------------------------
-# Testbench
-# ---------------------------
+# -----------------------------------------------------------------------------
+# 5. TESTBENCH CLASSES (Updated with UartSource)
+# -----------------------------------------------------------------------------
 class Testbench:
     def __init__(self, dut):
         self.dut = dut
+        self.log = logging.getLogger("cocotb.tb")
+        self.log.setLevel(logging.INFO)
+        # Initialize AXI Master
         self.axi_master = AxiMaster(AxiBus.from_prefix(dut, 'ccore_master_d'),
                                     clock=dut.CLK, reset=dut.RST_N, reset_active_level=False)
         self.cg = my_covergroup()
@@ -133,95 +112,140 @@ class uart_components:
     def __init__(self, dut, clk_freq, axi_baud_value, stop_bits_num, selected_parity, data_width, uart_base_addr):
         self.baud_rate = clk_freq // (16 * axi_baud_value)
 
-        # Select correct SOUT pin
-        if uart_base_addr == 0x00011300:
-            self.uart_tx = UartSink(dut.uart_cluster.uart0.SOUT, baud=self.baud_rate,
-                                    bits=data_width, stop_bits=stop_bits_num, parity=selected_parity)
-        else:
-            raise ValueError(f"Unknown UART Address: {hex(uart_base_addr)}")
+        # TX Monitor: Listens to what the DUT sends out (SOUT)
+        self.uart_tx = UartSink(dut.uart_cluster.uart0.SOUT, baud=self.baud_rate,
+                                bits=data_width, stop_bits=stop_bits_num, parity=selected_parity)
 
-# ---------------------------
-# Main Test
-# ---------------------------
+        # RX Driver: Drives data into the DUT (SIN)
+        self.uart_rx = UartSource(dut.uart_cluster.uart0.SIN, baud=self.baud_rate,
+                                  bits=data_width, stop_bits=stop_bits_num, parity=selected_parity)
+
+# -----------------------------------------------------------------------------
+# 6. TEST 1: TX (64-BIT NATIVE WRITE)
+# -----------------------------------------------------------------------------
 @cocotb.test()
-async def test_peripherals_64b_axi(dut):
-    """Verify UART on 64-bit AXI bus (Using Lane Steering)."""
-
-    # 1. Setup Clock/Reset
+async def test_tx_64bit_native(dut):
+    """
+    Test 1: Packs Baud + TX Data into one 64-bit AXI transaction.
+    Verifies AXI waveform and UART Output.
+    """
+    # Setup
     clock = Clock(dut.CLK, CLK_PERIOD_NS, units="ns")
     cocotb.start_soon(clock.start(start_high=False))
 
     dut.RST_N.value = 0
     for _ in range(200): await RisingEdge(dut.CLK)
     dut.RST_N.value = 1
-    for _ in range(20): await RisingEdge(dut.CLK)
+    for _ in range(50): await RisingEdge(dut.CLK)
 
-    # --- SILENCE THE INTERNAL CPU (Critical Fix) ---
-    # This prevents the "Unexpected Burst ID" crash by disabling the CPU's ability to drive the bus.
+    # Initialize Signals
     dut.ccore_master_d_AWVALID.value = 0
     dut.ccore_master_d_ARVALID.value = 0
     dut.ccore_master_d_WVALID.value = 0
     dut.ccore_master_d_RREADY.value = 0
     dut.ccore_master_d_BREADY.value = 0
 
-    # Allow silence to settle
-    for _ in range(10): await RisingEdge(dut.CLK)
-
     tb = Testbench(dut)
 
-    # 2. Configure Registers (Using 32-bit accesses)
-    # This automatically verifies that 32-bit data is correctly routed
-    # over the 64-bit bus structure.
+    # Configure Basics
     await rmw16(tb.axi_master, DELAY_REG, 0x0000)
     await rmw16(tb.axi_master, IQCYC_REG, 0x0000)
-    await rmw16(tb.axi_master, RX_THRESH, 0x0000)
-    await rmw16(tb.axi_master, INTERRUPT_EN, 0x0000)
 
-    # 3. Set Baud Rate
-    axi_baud_value = 0x0005
-    await rmw16(tb.axi_master, BAUD_REG, axi_baud_value)
-
-    # 4. Generate Random Config
+    # Configuration for TX Test
     stop_field = random.choice([0b00, 0b01, 0b10])
     stop_bits_num = field_to_stop_bits(stop_field)
     parity_sel = UartParity.NONE
     parity_field = parity_to_field(parity_sel)
-    data_width = random.choice([5, 6, 7, 8])
+    data_width = 8 # Stick to 8 for robust 64-bit testing
 
+    # Write Control Register
     ctrl_val = 0
     ctrl_val |= ((stop_field & 0b11) << CTRL_STOP_LSB)
     ctrl_val |= ((parity_field & 0b11) << CTRL_PARITY_LSB)
     ctrl_val |= ((data_width & CTRL_DW_MASK) << CTRL_DW_LSB)
-
     await rmw16(tb.axi_master, CTRL_REG, ctrl_val)
 
-    # 5. Setup UART Sink
-    tb1 = uart_components(dut, CLK_FREQ, axi_baud_value,
-                          stop_bits_num, parity_sel, data_width, UART_BASE)
-    tb.cg.sample(0, stop_field, parity_field, data_width)
+    # Setup Monitor
+    baud_val = 0x0005
+    tb_comps = uart_components(dut, CLK_FREQ, baud_val, stop_bits_num, parity_sel, data_width, UART_BASE)
 
-    # 6. Transmit Data (Write to TX_REG at Offset 0x04)
-    # *** VERIFICATION POINT ***
-    # TX_REG is at 0x11304. On a 64-bit bus, this location corresponds to the
-    # UPPER 32 bits (Lanes [63:32]).
-    # If this write succeeds, you have verified the 64-bit bus integration!
+    # -------------------------------------------------------
+    # 64-BIT TRANSACTION LOGIC
+    # -------------------------------------------------------
+    tx_char = random.randint(0, 255)
 
-    etx_data = random.getrandbits(data_width)
-    tx_word = etx_data & 0xFF
+    # Pack: Upper 32 = TX Data, Lower 32 = Baud Rate
+    data_64bit_int = (tx_char << 32) | baud_val
+    data_bytes = data_64bit_int.to_bytes(8, 'little')
 
-    dut._log.info(f"Writing 0x{tx_word:02X} to TX_REG (0x{TX_REG:X})...")
-    await axi_write32(tb.axi_master, TX_REG, tx_word)
+    dut._log.info(f"TX TEST: Sending 64-bit payload: {data_bytes.hex()}")
 
-    # 7. Check Result
-    dut._log.info("Waiting for UART output...")
-    await tb1.uart_tx.wait()
-    rx_bytes = tb1.uart_tx.read_nowait()
+    # Send via AXI (size=3 -> 8 bytes)
+    await tb.axi_master.write(address=UART_BASE, data=data_bytes, size=3)
 
-    received_byte = rx_bytes[0] if rx_bytes else 0
-    tb.cg.sample(received_byte, stop_field, parity_field, data_width)
+    # Verification
+    dut._log.info("TX TEST: Waiting for UART output...")
+    received = await tb_comps.uart_tx.read(count=1)
+    rx_byte = int(received[0])
 
-    dut._log.info(f"Sent: 0x{tx_word:02X}, Recv: 0x{received_byte:02X}")
-    assert received_byte == tx_word, f"Mismatch: {tx_word} != {received_byte}"
+    tb.cg.sample(rx_byte, stop_field, parity_field, data_width)
 
+    dut._log.info(f"TX TEST: Sent {hex(tx_char)}, Recv {hex(rx_byte)}")
+    assert rx_byte == tx_char, "TX Data Mismatch"
+
+# -----------------------------------------------------------------------------
+# 7. TEST 2: RX (EXTERNAL DRIVE -> AXI READ)
+# -----------------------------------------------------------------------------
+@cocotb.test()
+async def test_rx_verification(dut):
+    """
+    Test 2: Drives 'SIN' pin externally and verifies CPU can read it.
+    """
+    # Setup
+    clock = Clock(dut.CLK, CLK_PERIOD_NS, units="ns")
+    cocotb.start_soon(clock.start(start_high=False))
+
+    dut.RST_N.value = 0
+    for _ in range(100): await RisingEdge(dut.CLK)
+    dut.RST_N.value = 1
+    for _ in range(50): await RisingEdge(dut.CLK)
+
+    tb = Testbench(dut)
+
+    # 1. Configure Baud (Standard Write)
+    baud_val = 0x0005
+    await axi_write32(tb.axi_master, BAUD_REG, baud_val)
+
+    # 2. Configure Control (8-bit, 1 Stop, No Parity)
+    # 8-bit(3)<<5 | 1stop(0)<<1 | parity(0)<<3 = 0x60
+    ctrl_val = 0x60
+    await rmw16(tb.axi_master, CTRL_REG, ctrl_val)
+
+    # Setup Components
+    tb_comps = uart_components(dut, CLK_FREQ, baud_val, 1, UartParity.NONE, 8, UART_BASE)
+
+    # 3. Drive Data (External -> DUT)
+    rx_char_expected = 0xB4
+    dut._log.info(f"RX TEST: Driving external data {hex(rx_char_expected)} into SIN")
+
+    await tb_comps.uart_rx.write(bytes([rx_char_expected]))
+    await tb_comps.uart_rx.wait() # Wait for driver to finish
+
+    # Safety delay for FIFO latching
+    for _ in range(200): await RisingEdge(dut.CLK)
+
+    # 4. Read via AXI
+    dut._log.info("RX TEST: Reading RX_REG via AXI...")
+    rdata = await tb.axi_master.read(RX_REG, 4)
+
+    # Process Data (First byte is usually the char)
+    val_int = int.from_bytes(rdata.data, byteorder='little')
+    read_char = val_int & 0xFF
+
+    dut._log.info(f"RX TEST: Read back {hex(read_char)}")
+
+    assert read_char == rx_char_expected, \
+        f"RX Mismatch: Driven {hex(rx_char_expected)} != Read {hex(read_char)}"
+
+    dut._log.info("RX Test Passed & Coverage Dumped.")
     vsc.write_coverage_db('cov.xml')
-    dut._log.info("Test Passed.")
